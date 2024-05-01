@@ -1,0 +1,92 @@
+---
+title: "240501_Run_SQL"
+author: "Robbe Van Molle"
+date: "2024-05-01"
+output: html_document
+---
+
+```{r message=FALSE, warning=FALSE}
+# install.packages("odbc")
+# install.packages("DBI")
+# install.packages("tidyverse")
+ 
+library(odbc)
+library(DBI)
+library(tidyverse)
+```
+
+```{r}
+#Load the sample data
+data("population")
+data("who")
+ 
+#Create database
+con <- dbConnect(drv = RSQLite::SQLite(),
+                 dbname = ":memory:")
+ 
+#store sample data in database
+dbWriteTable(conn = con, 
+             name = "population",
+             value = population)
+dbWriteTable(conn = con, 
+             name = "who",
+             value = who)
+ 
+#remove the local data from the environment
+rm(who, population)
+```
+
+```{r}
+tbl(src = con, #the source if the database connection profile
+    "who") #the name of the table to preview
+```
+
+# Method 1: Write a SQL Statement & Execute it in RStudio
+This method works best if you already know how to write SQL queries and are working in an RMarkdown file. If both those conditions aren’t true, feel free to skip this method.
+
+Create a new RMarkdown chunk, but change its heading to `{sql, connection = con, output.var = “M1_results”}` instead of the default `{r}`
+
+
+```{sql connection=con}
+SELECT 
+  who.country, who.year, who.new_sp_m3544, population.population
+FROM 
+  who
+LEFT JOIN
+  population ON population.country = who.country AND population.year = who.year
+WHERE
+  who.country IN ('Brazil', 'Germany') AND
+  who.year >= 2000 AND
+  who.year <= 2010
+```
+
+```{r}
+head(M1_results)
+```
+
+```{r}
+select <- "SELECT who.country, who.year, who.new_sp_m3544, population.population"
+from <- "FROM who"
+ljoin <- "LEFT JOIN population ON population.country = who.country AND population.year = who.year"
+where = "WHERE who.country IN ('Brazil', 'Germany') AND who.year >= 2000 AND who.year <= 2010"
+ 
+query <- paste(select, from, ljoin, where)
+ 
+M2_results <- DBI::dbGetQuery(conn = con,
+                              statement = query)
+ 
+head(M2_results)
+```
+
+```{r}
+M3_results <- 
+  tbl(src = con, "who") %>% 
+  filter(country %in% c("Brazil", "Germany"),
+         year >= 2000,
+         year <= 2010) %>% 
+  dplyr::select(country, year, new_sp_m3544) %>% 
+  left_join(y = tbl(src = con, "population"),
+            by = c("country", "year")) %>% 
+  collect() #this tells dplyr to execute and store the query
+```
+
